@@ -1,0 +1,6 @@
+{
+   "window.title": "dockable-cli",
+   "terminal.integrated.env.windows": {
+      "Path": "node_modules/.bin;${env:PATH}"
+   },
+}

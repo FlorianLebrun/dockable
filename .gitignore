@@ -1,0 +1,9 @@
+node_modules
+dist
+.dev
+/.cache
+/.test
+*.pem
+.env
+/download
+*.jar

@@ -1,0 +1,11 @@
+{
+   "name": "scripts",
+   "bin": {
+      "devrun": "./devrun.cjs"
+   },
+   "dependencies": {
+      "node-watch": "0.5.9",
+      "source-map-support": "^0.5.21",
+      "yargs": "^17.7.1"
+   }
+}
