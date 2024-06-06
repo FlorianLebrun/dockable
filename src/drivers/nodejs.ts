@@ -1,58 +1,18 @@
-import { DockerCommandDriver, DockerContainer } from "../builder"
+import { DockerCommand, DockerContainer, DockerEnvironment } from "../docker/builder"
 import { Platform } from "../docker"
-import { use_7zip } from "./7zip"
-import { agent } from "./common"
 import Path from 'node:path'
-import Fs from 'node:fs'
+import * as docker from "src/docker/helpers"
 
 const NodeJsInstall = Symbol("nodejs-install")
 
-async function downloadNodeVersion(version: string, platform: Platform, destination: string) {
-
-   let pkgname: string
-   if (platform === Platform.win_x64) pkgname = `node-${version}-x64.msi`
-   else pkgname = `node-${version}-linux-x64.tar.xz`
-
-   const url = `https://nodejs.org/dist/${version}/${pkgname}`
-   const filePath = Path.join(destination, pkgname)
-   try {
-      if (!Fs.existsSync(filePath)) {
-         const response = await agent.request({
-            url,
-            method: 'GET',
-            responseType: 'stream',
-         })
-         Fs.mkdirSync(destination, { recursive: true })
-         const writer = Fs.createWriteStream(filePath)
-         response.data.pipe(writer)
-         return new Promise((resolve, reject) => {
-            writer.on('finish', resolve)
-            writer.on('error', reject)
-         })
-      }
-   } catch (error) {
-      console.error(`Error downloading Node.js version ${version}:`, error)
-      throw error
-   }
-   return null
-}
-
-export const use_nodejs: DockerCommandDriver<string> = {
-   async apply(target: DockerContainer, semver: string): Promise<void> {
-      await use_7zip.apply(target)
-
+export const use_nodejs: DockerCommand<string> = {
+   async apply(target: DockerContainer, env: DockerEnvironment, semver: string): Promise<void> {
       let dist = target.attributes[NodeJsInstall]
       if (!dist) {
-         const catalog = await agent.get('https://nodejs.org/dist/index.json');
+         const catalog = await docker.agent.get('https://nodejs.org/dist/index.json');
          dist = catalog.data[0]
          target.attributes[NodeJsInstall] = dist
-
-         await downloadNodeVersion(dist.version, target.platform, "./download")
-
-         const { version } = dist
-         const url = `https://nodejs.org/dist/${version}/node-${version}-${target.platform}.tar.xz`; // Change the URL based on your OS and architecture
-         const filePath = Path.join("download", `node-${version}-${target.platform}.tar.xz`);
-         target.execute("unzip", [filePath])
+         await install_node_version(target, dist.version, target.platform, "/download")
       }
       else {
          //TODO: check dist with semver
@@ -60,9 +20,26 @@ export const use_nodejs: DockerCommandDriver<string> = {
    }
 }
 
-export const npm: DockerCommandDriver<string[]> = {
-   async apply(target: DockerContainer, args: string[]): Promise<void> {
-      await use_nodejs.apply(target)
-      target.execute("npm", args)
+async function install_node_version(target: DockerContainer, version: string, platform: Platform, destination: string) {
+   if (platform === Platform.win_x64) {
+      const pkg_url = `https://nodejs.org/dist/${version}/node-${version}-win-x64.zip`
+      const pkg_file = await target.fetch(pkg_url)
+      await target.execute([
+         "cmd.exe", "/c",
+         "md", target.path("Programs/node"), "&",
+         "tar", "-xf", target.path(pkg_file), "-C", target.path("Programs/node"), "--strip-components=1", "&",
+         "setx", "/M", "PATH", `${target.path("Programs/node")};%PATH%`,
+      ])
+   }
+   else {
+      const pkgname = `node-${version}-linux-x64.tar.xz`
+      throw new Error("")
+   }
+}
+
+export const npm: DockerCommand<string[]> = {
+   async apply(target: DockerContainer, env: DockerEnvironment, args: string[]): Promise<void> {
+      await use_nodejs.apply(target, env)
+      await target.execute(["cmd.exe", "/c", "npm", ...args], env.working_dir)
    }
 }

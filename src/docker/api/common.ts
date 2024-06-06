@@ -122,7 +122,7 @@ export const setSearchParams = function (url: URL, ...objects: any[]) {
  */
 export const serializeDataIfNeeded = function (value: any, requestOptions: any, configuration?: Configuration) {
     const nonString = typeof value !== 'string';
-    const needsSerialization = nonString && configuration && configuration.isJsonMime
+    let needsSerialization = nonString && configuration && configuration.isJsonMime
         ? configuration.isJsonMime(requestOptions.headers['Content-Type'])
         : nonString;
     return needsSerialization

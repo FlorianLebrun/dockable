@@ -1,12 +1,12 @@
-import { DockerCommandDriver, DockerContainer } from "../builder"
+import { DockerCommand, DockerContainer, DockerEnvironment } from "../docker/builder"
 
 const ZipInstall = Symbol("7zip-install")
 
-export const use_7zip: DockerCommandDriver = {
-   async apply(target: DockerContainer): Promise<void> {
+export const use_7zip: DockerCommand = {
+   async apply(target: DockerContainer, env: DockerEnvironment): Promise<void> {
       if (!target.attributes[ZipInstall]) {
          target.attributes[ZipInstall] = "*"
-         target.execute("install", ["7zip"])
+         await target.execute(["install", "7zip"])
       }
    }
 }
