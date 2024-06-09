@@ -101,7 +101,7 @@ export async function execute_container_command(host: DockerHost, containerId: s
       exec_log.on('data', (data: Buffer) => {
          let lines = (last_line + data.toString("utf8").slice(8)).split("\n")
          last_line = lines.pop()
-         lines.forEach(line => console.log(Colors.blue("| " + line)))
+         lines.forEach(line => console.log(Colors.blue("\u2502 " + line)))
       })
 
       let delay: number = 1

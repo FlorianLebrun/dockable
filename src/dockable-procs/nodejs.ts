@@ -1,11 +1,11 @@
-import { DockerCommand, DockerContainer, DockerEnvironment } from "../docker/builder"
-import { Platform } from "../docker"
-import * as docker from "src/docker/helpers"
+import { DockerProcedure, DockerContainer, DockerEnvironment } from "../dockable-cli/builder"
+import { Platform } from "../dockable-cli"
+import * as docker from "src/dockable-cli/helpers"
 import { JSONSchema7 } from "json-schema"
 
 const NodeJsInstall = Symbol("nodejs-install")
 
-export const use_nodejs: DockerCommand<string> = {
+export const use_nodejs: DockerProcedure<string> = {
    schema(): JSONSchema7 {
       return { type: "string" }
    },
@@ -40,7 +40,7 @@ async function install_node_version(target: DockerContainer, version: string, pl
    }
 }
 
-export const npm: DockerCommand<string[]> = {
+export const npm: DockerProcedure<string[]> = {
    schema(): JSONSchema7 {
       return {
          type: "array",

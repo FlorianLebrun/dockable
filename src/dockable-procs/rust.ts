@@ -1,9 +1,9 @@
-import { DockerCommand, DockerContainer, DockerEnvironment } from "../docker/builder"
+import { DockerProcedure, DockerContainer, DockerEnvironment } from "../dockable-cli/builder"
 import { JSONSchema7 } from "json-schema"
 
 const RustInstall = Symbol("rust-install")
 
-export const use_rust: DockerCommand<string> = {
+export const use_rust: DockerProcedure<string> = {
    schema(): JSONSchema7 {
       return { type: "string" }
    },
@@ -14,7 +14,7 @@ export const use_rust: DockerCommand<string> = {
    },
 }
 
-export const cargo: DockerCommand<string[]> = {
+export const cargo: DockerProcedure<string[]> = {
    schema(): JSONSchema7 {
       return {
          type: "array",

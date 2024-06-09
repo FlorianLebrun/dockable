@@ -1,9 +1,9 @@
 import { JsonSchema } from "json-schema-library"
-import { DockerCommand, DockerContainer, DockerEnvironment } from "../docker/builder"
+import { DockerProcedure, DockerContainer, DockerEnvironment } from "../dockable-cli/builder"
 
 const ZipInstall = Symbol("7zip-install")
 
-export const use_7zip: DockerCommand = {
+export const use_7zip: DockerProcedure = {
    schema(): JsonSchema {
       return null
    },

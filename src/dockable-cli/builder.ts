@@ -4,13 +4,17 @@ import Path from "node:path"
 import Fs from 'node:fs'
 import { URI } from 'vscode-uri'
 import { JSONSchema7 } from "json-schema"
+import { docker_exec } from "./procs/exec"
+import { docker_copy } from "./procs/copy"
 export { URI }
 
+export type DockerBinding<Path = string> = {
+   host: Path
+   container: Path
+}
+
 export type DockerBindings<Path = string> = {
-   [name: string]: {
-      host: Path
-      container: Path
-   }
+   [name: string]: DockerBinding<Path>
 }
 
 export class DockerImage {
@@ -30,6 +34,9 @@ export class DockerImage {
       const nbindings = normalize_docker_bindings(this, bindings)
       await docker.reset_container(host, name, create_docker_container_config(this, nbindings))
       return new DockerContainer(name, host, this, nbindings)
+   }
+   create_script(name: string): DockerScript {
+      return new DockerScript(name, this)
    }
 }
 
@@ -92,38 +99,41 @@ export class DockerEnvironment {
    }
 }
 
-export class DockerScript extends DockerEnvironment {
-   private _execution: (() => void)[] = []
+type DockerTask = {
+   proc: DockerProcedure
+   data: any
+   working_dir: string
+}
+
+export class DockerScript {
+   private _tasks: DockerTask[] = []
    private _exposeds: { port: number, doc?: string }[] = []
    private _entry: { command: string[] | string, doc?: string } = null
-   schedule(method: () => Promise<void>): DockerScript {
-      this._execution.push(method)
+   private _bindings: DockerBindings<string | boolean> = {}
+   private _working_dir: string = null
+   constructor(readonly name: string, readonly image: DockerImage) {
+      this._working_dir = docker.system_dir[image.platform]
+   }
+   apply<T>(proc: DockerProcedure<T>, data?: T): DockerScript {
+      this._tasks.push({ proc, data, working_dir: this._working_dir })
       return this
    }
-   apply<T>(cmd: DockerCommand<T>, config?: T): DockerScript {
-      return this.schedule(() => {
-         return cmd.apply(this.target, this, config)
-      })
-   }
-   execute(program: string, args: string[] = []) {
-      return this.schedule(() => {
-         return docker.execute_container_command(this.target.host, this.target.id, this.working_dir, [program, ...args])
-      })
+   execute(...args: string[]) {
+      return this.apply(docker_exec, { args })
    }
    cwd(path: string): DockerScript {
-      this.working_dir = this.target.path(path)
+      this._working_dir = path
       return this
    }
    checkpoint() {
       return this
    }
    copy(dest: string, url: string): DockerScript {
-      return this.schedule(async () => {
-         if (url.startsWith("https:")) {
-            url = await docker.fetch_remote_file(this.target, url)
-         }
-         return docker.copy_host_file(this.target, dest, url)
-      })
+      return this.apply(docker_copy, { dest, url })
+   }
+   mount(endpoint: string, binding: DockerBinding<string | boolean>): DockerScript {
+      this._bindings[endpoint] = binding
+      return this
    }
    expose(port: number, doc?: string): DockerScript {
       this._exposeds.push({ port, doc })
@@ -134,20 +144,25 @@ export class DockerScript extends DockerEnvironment {
       return this
    }
    async commit(version?: string, name?: string): Promise<DockerImage> {
-      for (const exec of this._execution) {
-         await exec()
-      }
-      this._execution = null
+      const target = await this.image.create_container(this.name, this._bindings)
 
-      const image_id = await docker.commit_container_image(this.target, {
-         name,
+      const env = new DockerEnvironment(target)
+      for (const task of this._tasks) {
+         const { proc, data, working_dir } = task
+         env.working_dir = working_dir
+         await proc.apply(target, env, data)
+      }
+      this._tasks = null
+
+      const image_id = await docker.commit_container_image(target, {
+         name: this.name,
          version,
          command: this._entry?.command,
-         working_dir: this.working_dir,
+         working_dir: target.path(this._working_dir),
          ports: this._exposeds.map(x => x.port),
       })
 
-      return new DockerImage(image_id, this.target.platform)
+      return new DockerImage(image_id, target.platform)
    }
 }
 
@@ -188,14 +203,13 @@ export class DockerContainer {
       return docker.fetch_remote_file(this, url)
    }
    execute(args: string[] = [], working_dir?: string): Promise<void> {
-      return docker.execute_container_command(this.host, this.id, working_dir || this.system_dir, args)
-   }
-   script(): DockerScript {
-      return new DockerScript(this)
+      if (!working_dir) working_dir = this.system_dir
+      else working_dir = this.path(working_dir)
+      return docker.execute_container_command(this.host, this.id, working_dir, args)
    }
 }
 
-export interface DockerCommand<T extends any = unknown> {
+export interface DockerProcedure<T extends any = unknown> {
    schema(): JSONSchema7
    apply(target: DockerContainer, env: DockerEnvironment, config?: T)
 }
