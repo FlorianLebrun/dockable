@@ -49,15 +49,11 @@ function normalize_posix_path(path: string) {
 }
 
 function normalize_docker_bindings(image: DockerImage, bindings: DockerBindings<string | boolean>): DockerBindings<string> {
+
    function normalize_path(path: boolean | string, defaultBase: string, platform: Platform): string {
       if (path === true) return Path.resolve(defaultBase)
       else if (typeof path === "string") return Path.resolve(path)
       else return null
-   }
-
-   bindings = {
-      ...bindings,
-      "cache": { host: true, container: true, }
    }
 
    const nbindings = {}
@@ -113,6 +109,7 @@ export class DockerScript {
    private _working_dir: string = null
    constructor(readonly name: string, readonly image: DockerImage) {
       this._working_dir = docker.system_dir[image.platform]
+      this.mount("cache", { host: true, container: true, })
    }
    apply<T>(proc: DockerProcedure<T>, data?: T): DockerScript {
       this._tasks.push({ proc, data, working_dir: this._working_dir })
@@ -169,7 +166,6 @@ export class DockerScript {
 export class DockerContainer {
    platform: Platform
    attributes: { [key: string | symbol]: any } = {}
-   system_dir: string
    constructor(
       readonly id: string,
       readonly host: DockerHost,
@@ -177,7 +173,6 @@ export class DockerContainer {
       readonly bindings: DockerBindings,
    ) {
       this.platform = image.platform
-      this.system_dir = docker.system_dir[image.platform]
    }
    host_path(ref: string | URI): string {
       if (typeof ref === "string") ref = URI.parse(ref)
@@ -196,16 +191,16 @@ export class DockerContainer {
          return Path.join(binding.container, ref.path)
       }
       else {
-         return Path.join(this.system_dir, ref.path)
+         const base_dir = docker.system_dir[this.platform]
+         return Path.join(base_dir, ref.path)
       }
    }
    fetch(url: string): Promise<string> {
       return docker.fetch_remote_file(this, url)
    }
    execute(args: string[] = [], working_dir?: string): Promise<void> {
-      if (!working_dir) working_dir = this.system_dir
-      else working_dir = this.path(working_dir)
-      return docker.execute_container_command(this.host, this.id, working_dir, args)
+      const cwd = this.path(working_dir || "")
+      return docker.execute_container_command(this.host, this.id, cwd, args)
    }
 }
 
