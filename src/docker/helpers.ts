@@ -25,6 +25,16 @@ export const wait_entrypoint = {
    [Platform.win_x64]: ["cmd.exe", "/c", "ping -t localhost"],
 }
 
+export const shell_prefix = {
+   [Platform.linux_x64]: ["/bin/sh", "-c"],
+   [Platform.win_x64]: ["cmd.exe", "/c"],
+}
+
+export const shell_command = {
+   [Platform.linux_x64]: ["/bin/sh"],
+   [Platform.win_x64]: ["cmd.exe"],
+}
+
 export function remake_error(text: string, origin: any) {
    let reason: string = null
    if (typeof origin?.response?.data === "string") reason = origin.response.data
@@ -155,3 +165,76 @@ export async function fetch_remote_file(target: DockerContainer, url: string, ex
       throw new Error(`Fail downloading file '${url}' -> '${path}': ${error.message}`)
    }
 }
+
+export async function commit_container_image(target: DockerContainer, config: {
+   name?: string
+   version?: string
+   command: string[] | string
+   working_dir: string
+   ports?: number[]
+   env?: { [varname: string]: string | number }
+}) {
+   const image_name = config.name || target.id
+   const image_tag = config.version || "latest"
+   const image_ref = `${image_name}:${image_tag}`
+
+   const env = Object.keys(config.env || {}).reduce((env, varname) => {
+      env.push(`${varname}=${config.env[varname]}`)
+      return env
+   }, [])
+
+   const exposed_ports = (config.ports || []).reduce((exposeds, port) => {
+      exposeds[`${port}/tcp`] = {}
+      return exposeds
+   }, {})
+
+   let entrypoint: string[] = null, cmd: string[] = null, shell: string[] = null
+   if (Array.isArray(config.command)) {
+      entrypoint = config.command
+      cmd = config.command
+      shell = shell_prefix[target.platform]
+   }
+   else {
+      cmd = [config.command]
+      shell = shell_prefix[target.platform]
+   }
+   try {
+      await target.host.ContainerApi.containerStop(target.id)
+      const result = await target.host.ImageApi.imageCommit(target.id, image_name, image_tag, undefined, undefined, undefined, undefined, {
+         "AttachStdin": false,
+         "AttachStdout": true,
+         "AttachStderr": true,
+         "ExposedPorts": exposed_ports,
+         "Tty": false,
+         "OpenStdin": false,
+         "StdinOnce": false,
+         "Env": env,
+         "Entrypoint": entrypoint,
+         "Cmd": cmd,
+         "Shell": shell,
+         "Healthcheck": {
+            "Test": [],
+            "Interval": 0,
+            "Timeout": 0,
+            "Retries": 0,
+            "StartPeriod": 0,
+            "StartInterval": 0
+         },
+         "ArgsEscaped": false,
+         "Image": image_ref,
+         "Volumes": null,
+         "WorkingDir": config.working_dir,
+         "NetworkDisabled": false,
+         "OnBuild": [],
+         "Labels": null,
+         "StopSignal": "SIGTERM",
+         "StopTimeout": 10,
+      })
+      await target.host.ContainerApi.containerStart(target.id)
+      return result.Id
+   }
+   catch (err) {
+      throw remake_error("Fail container commit", err)
+   }
+}
+

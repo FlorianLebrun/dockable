@@ -1,5 +1,5 @@
 import Axios, { AxiosInstance } from "axios"
-import { ContainerApiFactory, ExecApiFactory } from "./api"
+import { ContainerApiFactory, ExecApiFactory, ImageApiFactory } from "./api"
 
 export enum Platform {
    win_x64 = "windows-x64",
@@ -8,6 +8,7 @@ export enum Platform {
 
 export class DockerHost {
    ContainerApi: ReturnType<typeof ContainerApiFactory>
+   ImageApi: ReturnType<typeof ImageApiFactory>
    ExecApi: ReturnType<typeof ExecApiFactory>
    constructor(
       readonly name: string,
@@ -15,6 +16,7 @@ export class DockerHost {
       readonly socket: AxiosInstance,
    ) {
       this.ContainerApi = ContainerApiFactory(undefined, undefined, this.socket)
+      this.ImageApi = ImageApiFactory(undefined, undefined, this.socket)
       this.ExecApi = ExecApiFactory(undefined, undefined, this.socket)
    }
 }

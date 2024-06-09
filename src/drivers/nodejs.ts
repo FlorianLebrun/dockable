@@ -1,11 +1,14 @@
 import { DockerCommand, DockerContainer, DockerEnvironment } from "../docker/builder"
 import { Platform } from "../docker"
-import Path from 'node:path'
 import * as docker from "src/docker/helpers"
+import { JSONSchema7 } from "json-schema"
 
 const NodeJsInstall = Symbol("nodejs-install")
 
 export const use_nodejs: DockerCommand<string> = {
+   schema(): JSONSchema7 {
+      return { type: "string" }
+   },
    async apply(target: DockerContainer, env: DockerEnvironment, semver: string): Promise<void> {
       let dist = target.attributes[NodeJsInstall]
       if (!dist) {
@@ -33,11 +36,17 @@ async function install_node_version(target: DockerContainer, version: string, pl
    }
    else {
       const pkgname = `node-${version}-linux-x64.tar.xz`
-      throw new Error("")
+      throw new Error("TODO")
    }
 }
 
 export const npm: DockerCommand<string[]> = {
+   schema(): JSONSchema7 {
+      return {
+         type: "array",
+         items: { type: "string" }
+      }
+   },
    async apply(target: DockerContainer, env: DockerEnvironment, args: string[]): Promise<void> {
       await use_nodejs.apply(target, env)
       await target.execute(["cmd.exe", "/c", "npm", ...args], env.working_dir)

@@ -2,18 +2,9 @@ import * as docker from "./helpers"
 import { DockerHost, Platform, get_default_host } from "."
 import Path from "node:path"
 import Fs from 'node:fs'
-
-export class DockerResource {
-   uri: string
-}
-
-export class DockerPath extends DockerResource {
-   source?: DockerContainer
-}
-
-export class DockerWebUrl extends DockerResource {
-   headers: { [header: string]: string }
-}
+import { URI } from 'vscode-uri'
+import { JSONSchema7 } from "json-schema"
+export { URI }
 
 export type DockerBindings<Path = string> = {
    [name: string]: {
@@ -102,21 +93,21 @@ export class DockerEnvironment {
 }
 
 export class DockerScript extends DockerEnvironment {
-   execution: Promise<void> = Promise.resolve()
+   private _execution: (() => void)[] = []
+   private _exposeds: { port: number, doc?: string }[] = []
+   private _entry: { command: string[] | string, doc?: string } = null
    schedule(method: () => Promise<void>): DockerScript {
-      this.execution = this.execution.then(() => {
-         return method()
-      })
+      this._execution.push(method)
       return this
    }
-   apply<T>(driver: DockerCommand<T>, config?: T): DockerScript {
+   apply<T>(cmd: DockerCommand<T>, config?: T): DockerScript {
       return this.schedule(() => {
-         return driver.apply(this.target, this, config)
+         return cmd.apply(this.target, this, config)
       })
    }
    execute(program: string, args: string[] = []) {
       return this.schedule(() => {
-         return docker.execute_container_command(this.target.host, this.target.name, this.working_dir, [program, ...args])
+         return docker.execute_container_command(this.target.host, this.target.id, this.working_dir, [program, ...args])
       })
    }
    cwd(path: string): DockerScript {
@@ -135,13 +126,28 @@ export class DockerScript extends DockerEnvironment {
       })
    }
    expose(port: number, doc?: string): DockerScript {
+      this._exposeds.push({ port, doc })
       return this
    }
-   entry(port: number, doc?: string): DockerScript {
+   entry(command: string[] | string, doc?: string): DockerScript {
+      this._entry = { command, doc }
       return this
    }
-   async complete() {
-      await this.execution
+   async commit(version?: string, name?: string): Promise<DockerImage> {
+      for (const exec of this._execution) {
+         await exec()
+      }
+      this._execution = null
+
+      const image_id = await docker.commit_container_image(this.target, {
+         name,
+         version,
+         command: this._entry?.command,
+         working_dir: this.working_dir,
+         ports: this._exposeds.map(x => x.port),
+      })
+
+      return new DockerImage(image_id, this.target.platform)
    }
 }
 
@@ -150,7 +156,7 @@ export class DockerContainer {
    attributes: { [key: string | symbol]: any } = {}
    system_dir: string
    constructor(
-      readonly name: string,
+      readonly id: string,
       readonly host: DockerHost,
       readonly image: DockerImage,
       readonly bindings: DockerBindings,
@@ -158,33 +164,31 @@ export class DockerContainer {
       this.platform = image.platform
       this.system_dir = docker.system_dir[image.platform]
    }
-   host_path(ref: string): string {
-      const basename = ref.split(":")[0]
-      const binding = this.bindings[basename]
+   host_path(ref: string | URI): string {
+      if (typeof ref === "string") ref = URI.parse(ref)
+      const binding = this.bindings[ref.scheme]
       if (binding?.host) {
-         const part = ref.slice(basename.length + 1)
-         return Path.join(binding.host as string, part)
+         return Path.join(binding.host, ref.path)
       }
       else {
          return null
       }
    }
-   path(ref: string): string {
-      const basename = ref.split(":")[0]
-      const binding = this.bindings[basename]
+   path(ref: string | URI): string {
+      if (typeof ref === "string") ref = URI.parse(ref)
+      const binding = this.bindings[ref.scheme]
       if (binding?.container) {
-         const part = ref.slice(basename.length + 1)
-         return Path.join(binding.container as string, part)
+         return Path.join(binding.container, ref.path)
       }
       else {
-         return Path.join(this.system_dir, ref)
+         return Path.join(this.system_dir, ref.path)
       }
    }
    fetch(url: string): Promise<string> {
       return docker.fetch_remote_file(this, url)
    }
    execute(args: string[] = [], working_dir?: string): Promise<void> {
-      return docker.execute_container_command(this.host, this.name, working_dir || this.system_dir, args)
+      return docker.execute_container_command(this.host, this.id, working_dir || this.system_dir, args)
    }
    script(): DockerScript {
       return new DockerScript(this)
@@ -192,14 +196,12 @@ export class DockerContainer {
 }
 
 export interface DockerCommand<T extends any = unknown> {
+   schema(): JSONSchema7
    apply(target: DockerContainer, env: DockerEnvironment, config?: T)
 }
 
 export default {
    open_image(name: string, platform: Platform): DockerImage {
       return new DockerImage(name, platform)
-   },
-   path(path: string): DockerPath {
-      return null
    },
 }
