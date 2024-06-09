@@ -140,7 +140,7 @@ export class DockerScript {
       this._entry = { command, doc }
       return this
    }
-   async commit(version?: string, name?: string): Promise<DockerImage> {
+   async commit(version?: string): Promise<DockerImage> {
       const target = await this.image.create_container(this.name, this._bindings)
 
       const env = new DockerEnvironment(target)
@@ -151,15 +151,19 @@ export class DockerScript {
       }
       this._tasks = null
 
-      const image_id = await docker.commit_container_image(target, {
-         name: this.name,
-         version,
-         command: this._entry?.command,
-         working_dir: target.path(this._working_dir),
-         ports: this._exposeds.map(x => x.port),
-      })
-
-      return new DockerImage(image_id, target.platform)
+      let result = null
+      if (version) {
+         const image_id = await docker.commit_container_image(target, {
+            name: this.name,
+            version,
+            command: this._entry?.command,
+            working_dir: target.path(this._working_dir),
+            ports: this._exposeds.map(x => x.port),
+         })
+         result = new DockerImage(image_id, target.platform)
+      }
+      target.dispose(true)
+      return result
    }
 }
 
@@ -201,6 +205,14 @@ export class DockerContainer {
    execute(args: string[] = [], working_dir?: string): Promise<void> {
       const cwd = this.path(working_dir || "")
       return docker.execute_container_command(this.host, this.id, cwd, args)
+   }
+   async dispose(remove: boolean) {
+      if (remove) {
+         await this.host.ContainerApi.containerDelete(this.id, true, true)
+      }
+      else {
+         await this.host.ContainerApi.containerStop(this.id)
+      }
    }
 }
 
