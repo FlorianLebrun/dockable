@@ -25,13 +25,13 @@ export class DockerImage {
    }
    async open_container(name: string, bindings: DockerBindings<string | boolean>): Promise<DockerContainer> {
       const host = get_default_host()
-      const nbindings = normalize_docker_bindings(this, bindings)
+      const nbindings = normalize_docker_bindings(this, bindings || {})
       await docker.open_container(host, name, create_docker_container_config(this, nbindings))
       return new DockerContainer(name, host, this, nbindings)
    }
-   async create_container(name: string, bindings: DockerBindings<string | boolean>): Promise<DockerContainer> {
+   async create_container(name: string, bindings?: DockerBindings<string | boolean>): Promise<DockerContainer> {
       const host = get_default_host()
-      const nbindings = normalize_docker_bindings(this, bindings)
+      const nbindings = normalize_docker_bindings(this, bindings || {})
       await docker.reset_container(host, name, create_docker_container_config(this, nbindings))
       return new DockerContainer(name, host, this, nbindings)
    }
@@ -162,7 +162,7 @@ export class DockerScript {
          })
          result = new DockerImage(image_id, target.platform)
       }
-      target.dispose(true)
+      //target.dispose(true)
       return result
    }
 }

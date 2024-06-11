@@ -177,6 +177,7 @@ export async function commit_container_image(target: DockerContainer, config: {
    const image_name = config.name || target.id
    const image_tag = config.version || "latest"
    const image_ref = `${image_name}:${image_tag}`
+   console.log(Colors.yellow("> COMMIT: " + Colors.italic(image_ref)))
 
    const env = Object.keys(config.env || {}).reduce((env, varname) => {
       env.push(`${varname}=${config.env[varname]}`)
@@ -231,7 +232,9 @@ export async function commit_container_image(target: DockerContainer, config: {
          "StopTimeout": 10,
       })
       await target.host.ContainerApi.containerStart(target.id)
-      return result.Id
+      console.log(Colors.blue(`\u2502 Image '${image_ref}' created`))
+      console.log(Colors.blue(`\u2502 Image raw id: ${result.Id}`))
+      return image_ref
    }
    catch (err) {
       throw remake_error("Fail container commit", err)
